@@ -26,7 +26,7 @@ type ImageRepositoryEvents = {
 };
 
 export class ImageRepository {
-  private static _repositories: Record<string, ImageRepository> = {};
+  private static _repositories: Record<string, Promise<ImageRepository>> = {};
 
   private _isInited = false;
 
@@ -47,11 +47,14 @@ export class ImageRepository {
 
   private constructor(private readonly videoUrl: string) {}
 
-  static async getRepository(videoUrl: string) {
+  static getRepository(videoUrl: string) {
     const key = videoUrl.toLowerCase().trim();
     if (!this._repositories[key]) {
-      this._repositories[key] = new ImageRepository(key);
-      await this._repositories[key].init();
+      this._repositories[key] = (async () => {
+        const repo = new ImageRepository(key);
+        await repo.init();
+        return repo;
+      })();
     }
     return this._repositories[key];
   }
