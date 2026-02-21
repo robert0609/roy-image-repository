@@ -2,11 +2,11 @@
   "name": "roy-image-repository",
   "author": "roy",
   "version": "0.1.0",
-  "module": "./dist/index.js",
+  "module": "./dist/roy-image-repository.js",
   "type": "module",
   "exports": {
     ".": {
-      "import": "./dist/index.js"
+      "import": "./dist/roy-image-repository.js"
     },
     "./dist/": {
       "import": "./dist/"
@@ -15,7 +15,7 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "dev": "vite --host",
-    "build": "rimraf build/**/* && tsc && vite build && dts-bundle-generator --config ./dts-bundle-generator.config.ts && copyfiles ./package.json build",
+    "build": "rm -drf build && tsc && vite build && dts-bundle-generator --config ./dts-bundle-generator.config.ts && copyfiles ./package.json build",
     "test": "vitest",
     "test:coverage": "vitest --coverage",
     "lint:scripts": "eslint . --ext .ts",
