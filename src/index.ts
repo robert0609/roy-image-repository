@@ -5,6 +5,7 @@
 import { loadVideo } from "@/utils/loadVideo";
 import mitt, { type Handler } from "mitt";
 import { s2us, us2s } from "./utils/date";
+import { SerialTaskQueue } from "./utils/taskQueue";
 
 type ImageRepositoryEvents = {
   /**
@@ -29,6 +30,7 @@ export class ImageRepository {
   private static _repositories: Record<string, Promise<ImageRepository>> = {};
 
   private _isInited = false;
+  private _isPlaying = false;
 
   private _videoElement?: HTMLVideoElement;
   /**
@@ -65,19 +67,6 @@ export class ImageRepository {
     }
     this._isInited = true;
     this._videoElement = await loadVideo(this.videoUrl);
-
-    const callback: VideoFrameRequestCallback = (now, metadata) => {
-      // mediaTime单位是秒，因此要转换为微秒
-      this._emitter.emit("requestFrame", {
-        frameTimestampInMicroseconds: s2us(metadata.mediaTime),
-        originalEvent: { now, metadata },
-      });
-      // 触发下一次
-      this._requestVideoFrameCallbackId =
-        this._videoElement!.requestVideoFrameCallback(callback);
-    };
-    this._requestVideoFrameCallbackId =
-      this._videoElement.requestVideoFrameCallback(callback);
   }
 
   uninit() {
@@ -85,26 +74,39 @@ export class ImageRepository {
       return;
     }
     this._isInited = false;
-    if (!!this._requestVideoFrameCallbackId) {
-      this._videoElement!.cancelVideoFrameCallback(
-        this._requestVideoFrameCallbackId
-      );
-      this._requestVideoFrameCallbackId = undefined;
+    if (this._isPlaying) {
+      this.stop();
     }
+    this._taskQueue.stop();
+
     this._videoElement = undefined;
     this._emitter.all.clear();
   }
 
+  private _taskQueue = new SerialTaskQueue();
   /**
-   * 根据传入的微秒时间戳，获取指定位置的帧图片
+   * 根据传入的微秒时间戳，获取指定位置的帧图片，直接返回切换到对应帧的视频对象，在并发调用的情况下，内部通过统一的串行队列，将调用的结果按照顺序返回
    * @param timstampInMicroseconds 微秒时间戳
    */
   async getImage(timstampInMicroseconds: number) {
-    if (!this._videoElement) {
-      throw new Error(`image repository is not inited!`);
-    }
-    // currentTime单位是秒，因此这里要将传入的微秒时间戳转换为秒
-    this._videoElement.currentTime = us2s(timstampInMicroseconds);
+    return await this._taskQueue.enqueue(() => {
+      return new Promise<HTMLVideoElement>((resolve, reject) => {
+        if (!this._videoElement) {
+          reject(new Error(`image repository is not inited!`));
+          return;
+        }
+        // 判断是否已经处于播放中了
+        if (this._isPlaying) {
+          reject(new Error(`image repository is playing!`));
+          return;
+        }
+        this._videoElement.requestVideoFrameCallback((now, metadata) => {
+          resolve(this.videoElement!);
+        });
+        // currentTime单位是秒，因此这里要将传入的微秒时间戳转换为秒
+        this._videoElement.currentTime = us2s(timstampInMicroseconds);
+      });
+    });
   }
 
   /**
@@ -114,7 +116,32 @@ export class ImageRepository {
     if (!this._videoElement) {
       throw new Error(`image repository is not inited!`);
     }
-    return await this._videoElement.play();
+    // 判断是否已经处于播放中了
+    if (this._isPlaying) {
+      throw new Error(`image repository is playing!`);
+    }
+
+    try {
+      this._isPlaying = true;
+
+      const callback: VideoFrameRequestCallback = (now, metadata) => {
+        // mediaTime单位是秒，因此要转换为微秒
+        this._emitter.emit("requestFrame", {
+          frameTimestampInMicroseconds: s2us(metadata.mediaTime),
+          originalEvent: { now, metadata },
+        });
+        // 触发下一次
+        this._requestVideoFrameCallbackId =
+          this._videoElement!.requestVideoFrameCallback(callback);
+      };
+      this._requestVideoFrameCallbackId =
+        this._videoElement.requestVideoFrameCallback(callback);
+
+      return await this._videoElement.play();
+    } catch (err) {
+      this._isPlaying = false;
+      throw err;
+    }
   }
 
   /**
@@ -123,6 +150,9 @@ export class ImageRepository {
   stop() {
     if (!this._videoElement) {
       throw new Error(`image repository is not inited!`);
+    }
+    if (!this._isPlaying) {
+      throw new Error(`image repository is not playing`);
     }
     this.pause();
     this._videoElement.currentTime = us2s(0);
@@ -135,7 +165,24 @@ export class ImageRepository {
     if (!this._videoElement) {
       throw new Error(`image repository is not inited!`);
     }
-    this._videoElement.pause();
+    if (!this._isPlaying) {
+      throw new Error(`image repository is not playing`);
+    }
+    try {
+      this._isPlaying = false;
+
+      if (!!this._requestVideoFrameCallbackId) {
+        this._videoElement!.cancelVideoFrameCallback(
+          this._requestVideoFrameCallbackId
+        );
+        this._requestVideoFrameCallbackId = undefined;
+      }
+
+      this._videoElement.pause();
+    } catch (err) {
+      this._isPlaying = true;
+      throw err;
+    }
   }
 
   on<T extends keyof ImageRepositoryEvents>(
