@@ -9,10 +9,11 @@ export async function loadVideo(url: string) {
       videoEl.width = videoEl.videoWidth;
       videoEl.height = videoEl.videoHeight;
 
+      console.log("[imageRepository]video metadata load success");
       resolve(videoEl);
     };
     videoEl.onerror = evt => {
-      console.log("video load error", evt);
+      console.log("[imageRepository]video load error", evt);
       reject(evt);
     };
 

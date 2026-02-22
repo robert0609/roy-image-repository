@@ -100,9 +100,14 @@ export class ImageRepository {
           reject(new Error(`image repository is playing!`));
           return;
         }
-        this._videoElement.requestVideoFrameCallback(() => {
+        const seekend = () => {
+          this._videoElement?.removeEventListener("seeked", seekend);
+          console.log(
+            `[imageRepository]request new frame, seeking === ${this.videoElement.seeking}`
+          );
           resolve(this.videoElement!);
-        });
+        };
+        this._videoElement.addEventListener("seeked", seekend);
         // currentTime单位是秒，因此这里要将传入的微秒时间戳转换为秒
         this._videoElement.currentTime = us2s(timstampInMicroseconds);
       });
