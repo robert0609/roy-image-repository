@@ -53,7 +53,7 @@ export class ImageRepository {
     const key = videoUrl.toLowerCase().trim();
     if (!this._repositories[key]) {
       this._repositories[key] = (async () => {
-        const repo = new ImageRepository(key);
+        const repo = new ImageRepository(videoUrl);
         await repo.init();
         return repo;
       })();
