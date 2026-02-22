@@ -100,7 +100,7 @@ export class ImageRepository {
           reject(new Error(`image repository is playing!`));
           return;
         }
-        this._videoElement.requestVideoFrameCallback((now, metadata) => {
+        this._videoElement.requestVideoFrameCallback(() => {
           resolve(this.videoElement!);
         });
         // currentTime单位是秒，因此这里要将传入的微秒时间戳转换为秒
